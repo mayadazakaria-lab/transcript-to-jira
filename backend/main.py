@@ -53,21 +53,32 @@ from langchain_community.vectorstores import InMemoryVectorStore
 import httpx
 
 
-class TripRequest(BaseModel):
-    destination: str
-    duration: str
-    budget: Optional[str] = None
-    interests: Optional[str] = None
-    travel_style: Optional[str] = None
+class TranscriptRequest(BaseModel):
+    transcript: str
+    meeting_type: Optional[str] = "general"  # user_research, sprint_planning, bug_triage, general
+    project_key: Optional[str] = "PROJ"
+    auto_submit: Optional[bool] = False
     # Optional fields for enhanced session tracking and observability
-    user_input: Optional[str] = None
     session_id: Optional[str] = None
     user_id: Optional[str] = None
     turn_index: Optional[int] = None
 
 
-class TripResponse(BaseModel):
-    result: str
+class JiraTicket(BaseModel):
+    title: str
+    type: str  # Story, Bug, Task, Epic
+    priority: str  # P0, P1, P2, P3
+    effort: str  # S, M, L, XL
+    description: str
+    labels: List[str] = []
+    component: Optional[str] = None
+    jira_url: Optional[str] = None
+
+
+class TranscriptResponse(BaseModel):
+    session_id: str
+    tickets: List[JiraTicket]
+    metadata: Dict[str, Any] = {}
     tool_calls: List[Dict[str, Any]] = []
 
 
@@ -369,30 +380,139 @@ def _with_prefix(prefix: str, summary: str) -> str:
     return _compact(text)
 
 
-# Tools with real API calls + LLM fallback (graceful degradation pattern)
+# Tools for transcript analysis and ticket generation
 @tool
-def essential_info(destination: str) -> str:
-    """Return essential destination info like weather, sights, and etiquette."""
-    query = f"{destination} travel essentials weather best time top attractions etiquette language currency safety"
-    summary = _search_api(query)
-    if summary:
-        return _with_prefix(f"{destination} essentials", summary)
-    
-    # LLM fallback when no search API is configured
-    instruction = f"Summarize the climate, best visit time, standout sights, customs, language, currency, and safety tips for {destination}."
+def extract_action_items(transcript: str) -> str:
+    """Extract actionable items, feature requests, and bugs from a transcript."""
+    # Use LLM to extract action items from the transcript
+    instruction = (
+        "Analyze this meeting transcript and extract all actionable items, feature requests, bugs, and tasks. "
+        "For each item, provide: 1) A clear title, 2) Description, 3) Type (Story/Bug/Task). "
+        "Return as a structured list.\n\n"
+        f"Transcript: {transcript[:2000]}"  # Limit length for context
+    )
     return _llm_fallback(instruction)
 
 
 @tool
-def budget_basics(destination: str, duration: str) -> str:
-    """Return high-level budget categories for a given destination and duration."""
-    query = f"{destination} travel budget average daily costs {duration}"
-    summary = _search_api(query)
-    if summary:
-        return _with_prefix(f"{destination} budget {duration}", summary)
-    
-    instruction = f"Outline lodging, meals, transport, activities, and extra costs for a {duration} trip to {destination}."
+def identify_ticket_type(item_description: str) -> str:
+    """Identify the type of Jira ticket (Story, Bug, Task, Epic) based on description."""
+    instruction = (
+        f"Analyze this item and determine if it should be a Story, Bug, Task, or Epic ticket. "
+        f"Provide reasoning.\n\n"
+        f"Item: {item_description}"
+    )
     return _llm_fallback(instruction)
+
+
+@tool
+def extract_requirements(action_item: str) -> str:
+    """Extract detailed requirements and acceptance criteria from an action item."""
+    instruction = (
+        f"Given this action item, extract detailed requirements, acceptance criteria, and technical considerations. "
+        f"Be specific and actionable.\n\n"
+        f"Action Item: {action_item}"
+    )
+    return _llm_fallback(instruction)
+
+
+# Tools for Priority & Impact Agent
+@tool
+def calculate_priority_score(ticket_description: str, impact: str = "medium") -> str:
+    """Calculate priority score (P0-P3) based on ticket description and business impact."""
+    instruction = (
+        f"Assess the priority of this ticket. Consider urgency, business impact ({impact}), "
+        f"user pain points, and dependencies. Assign P0 (critical), P1 (high), P2 (medium), or P3 (low). "
+        f"Provide reasoning.\n\n"
+        f"Ticket: {ticket_description}"
+    )
+    return _llm_fallback(instruction)
+
+
+@tool
+def estimate_effort(ticket_description: str, technical_complexity: str = "unknown") -> str:
+    """Estimate development effort (S/M/L/XL) for a ticket."""
+    instruction = (
+        f"Estimate the development effort for this ticket. Consider technical complexity ({technical_complexity}), "
+        f"dependencies, testing needs, and unknown factors. "
+        f"Assign S (small, <1 day), M (medium, 1-3 days), L (large, 1 week), or XL (extra large, >1 week). "
+        f"Provide reasoning.\n\n"
+        f"Ticket: {ticket_description}"
+    )
+    return _llm_fallback(instruction)
+
+
+@tool
+def assess_impact(ticket_description: str, ticket_type: str = "Story") -> str:
+    """Assess business and user impact of implementing this ticket."""
+    instruction = (
+        f"Assess the business and user impact of this {ticket_type}. "
+        f"Consider: user pain points addressed, business value, potential risks, and strategic alignment. "
+        f"Provide a concise impact assessment.\n\n"
+        f"Ticket: {ticket_description}"
+    )
+    return _llm_fallback(instruction)
+
+
+# Tools for Context Enrichment Agent
+@tool
+def vector_search_company_docs(query: str) -> str:
+    """Search company documentation and past tickets for relevant context."""
+    # This is a placeholder - in production would use real vector search
+    instruction = (
+        f"Based on typical company documentation patterns, suggest relevant context, "
+        f"related components, common labels, and similar past tickets for: {query}"
+    )
+    return _llm_fallback(instruction)
+
+
+@tool
+def find_related_tickets(ticket_summary: str) -> str:
+    """Find related or duplicate tickets based on similarity."""
+    # Placeholder - would query Jira API in production
+    instruction = (
+        f"Suggest what related or potentially duplicate tickets might exist for: {ticket_summary}. "
+        f"Include suggestions for linking to related work."
+    )
+    return _llm_fallback(instruction)
+
+
+@tool
+def add_labels(ticket_description: str, ticket_type: str) -> str:
+    """Suggest appropriate labels and components based on ticket content."""
+    instruction = (
+        f"Suggest appropriate Jira labels, components, and tags for this {ticket_type}. "
+        f"Consider technical area, feature category, and team ownership.\n\n"
+        f"Ticket: {ticket_description}"
+    )
+    return _llm_fallback(instruction)
+
+
+# Tools for Ticket Synthesis Agent
+@tool
+def format_jira_ticket(title: str, description: str, ticket_type: str, priority: str, effort: str) -> str:
+    """Format ticket information into proper Jira structure."""
+    instruction = (
+        f"Format this information into a well-structured Jira ticket description with sections for: "
+        f"Summary, Description, Acceptance Criteria, Technical Notes, and Dependencies.\n\n"
+        f"Title: {title}\n"
+        f"Type: {ticket_type}\n"
+        f"Priority: {priority}\n"
+        f"Effort: {effort}\n"
+        f"Description: {description}"
+    )
+    return _llm_fallback(instruction)
+
+
+@tool
+def create_jira_ticket(ticket_data: Dict[str, Any]) -> str:
+    """Create a Jira ticket via API (placeholder for actual implementation)."""
+    # This is a placeholder - real implementation would call Jira REST API
+    jira_url = os.getenv("JIRA_BASE_URL", "https://your-company.atlassian.net")
+    project_key = ticket_data.get("project_key", "PROJ")
+    ticket_id = f"{project_key}-{int(time.time()) % 10000}"
+    
+    return f"Ticket created: {jira_url}/browse/{ticket_id}"
 
 
 @tool
@@ -508,40 +628,48 @@ def packing_list(destination: str, duration: str, activities: Optional[List[str]
     return _llm_fallback(instruction)
 
 
-class TripState(TypedDict):
+class TicketState(TypedDict):
     messages: Annotated[List[BaseMessage], operator.add]
-    trip_request: Dict[str, Any]
-    research: Optional[str]
-    budget: Optional[str]
-    local: Optional[str]
-    final: Optional[str]
+    transcript_request: Dict[str, Any]
+    analysis: Optional[str]  # From transcript analysis agent
+    priority: Optional[str]  # From priority & impact agent
+    context: Optional[str]  # From context enrichment agent
+    tickets: Optional[List[Dict[str, Any]]]  # Final tickets from synthesis agent
     tool_calls: Annotated[List[Dict[str, Any]], operator.add]
 
 
-def research_agent(state: TripState) -> TripState:
-    req = state["trip_request"]
-    destination = req["destination"]
+def transcript_analysis_agent(state: TicketState) -> TicketState:
+    """Analyze transcript and extract actionable items for Jira tickets."""
+    req = state["transcript_request"]
+    transcript = req["transcript"]
+    meeting_type = req.get("meeting_type", "general")
+    
     prompt_t = (
-        "You are a research assistant.\n"
-        "Gather essential information about {destination}.\n"
-        "Use tools to get weather, visa, and essential info, then summarize."
+        "You are a transcript analysis expert.\n"
+        "Analyze this {meeting_type} meeting transcript and extract all actionable items, "
+        "feature requests, bugs, and tasks that should become Jira tickets.\n"
+        "Use your tools to extract and categorize each item.\n\n"
+        "Transcript excerpt: {transcript_preview}"
     )
-    vars_ = {"destination": destination}
+    vars_ = {
+        "meeting_type": meeting_type,
+        "transcript_preview": transcript[:500] + "..." if len(transcript) > 500 else transcript
+    }
     
     messages = [SystemMessage(content=prompt_t.format(**vars_))]
-    tools = [essential_info, weather_brief, visa_brief]
+    tools = [extract_action_items, identify_ticket_type, extract_requirements]
     agent = llm.bind_tools(tools)
     
     calls: List[Dict[str, Any]] = []
-    tool_results = []
     
     # Agent metadata and prompt template instrumentation
-    with using_attributes(tags=["research", "info_gathering"]):
+    with using_attributes(tags=["transcript_analysis", "ticket_extraction"]):
         if _TRACING:
             current_span = trace.get_current_span()
             if current_span:
-                current_span.set_attribute("metadata.agent_type", "research")
-                current_span.set_attribute("metadata.agent_node", "research_agent")
+                current_span.set_attribute("metadata.agent_type", "transcript_analysis")
+                current_span.set_attribute("metadata.agent_node", "transcript_analysis_agent")
+                current_span.set_attribute("metadata.meeting_type", meeting_type)
         
         with using_prompt_template(template=prompt_t, variables=vars_, version="v1"):
             res = agent.invoke(messages)
@@ -549,61 +677,7 @@ def research_agent(state: TripState) -> TripState:
     # Collect tool calls and execute them
     if getattr(res, "tool_calls", None):
         for c in res.tool_calls:
-            calls.append({"agent": "research", "tool": c["name"], "args": c.get("args", {})})
-        
-        tool_node = ToolNode(tools)
-        tr = tool_node.invoke({"messages": [res]})
-        tool_results = tr["messages"]
-        
-        # Add tool results to conversation and ask LLM to synthesize
-        messages.append(res)
-        messages.extend(tool_results)
-        
-        synthesis_prompt = "Based on the above information, provide a comprehensive summary for the traveler."
-        messages.append(SystemMessage(content=synthesis_prompt))
-        
-        # Instrument synthesis LLM call with its own prompt template
-        synthesis_vars = {"destination": destination, "context": "tool_results"}
-        with using_prompt_template(template=synthesis_prompt, variables=synthesis_vars, version="v1-synthesis"):
-            final_res = llm.invoke(messages)
-        out = final_res.content
-    else:
-        out = res.content
-
-    return {"messages": [SystemMessage(content=out)], "research": out, "tool_calls": calls}
-
-
-def budget_agent(state: TripState) -> TripState:
-    req = state["trip_request"]
-    destination, duration = req["destination"], req["duration"]
-    budget = req.get("budget", "moderate")
-    prompt_t = (
-        "You are a budget analyst.\n"
-        "Analyze costs for {destination} over {duration} with budget: {budget}.\n"
-        "Use tools to get pricing information, then provide a detailed breakdown."
-    )
-    vars_ = {"destination": destination, "duration": duration, "budget": budget}
-    
-    messages = [SystemMessage(content=prompt_t.format(**vars_))]
-    tools = [budget_basics, attraction_prices]
-    agent = llm.bind_tools(tools)
-    
-    calls: List[Dict[str, Any]] = []
-    
-    # Agent metadata and prompt template instrumentation
-    with using_attributes(tags=["budget", "cost_analysis"]):
-        if _TRACING:
-            current_span = trace.get_current_span()
-            if current_span:
-                current_span.set_attribute("metadata.agent_type", "budget")
-                current_span.set_attribute("metadata.agent_node", "budget_agent")
-        
-        with using_prompt_template(template=prompt_t, variables=vars_, version="v1"):
-            res = agent.invoke(messages)
-    
-    if getattr(res, "tool_calls", None):
-        for c in res.tool_calls:
-            calls.append({"agent": "budget", "tool": c["name"], "args": c.get("args", {})})
+            calls.append({"agent": "transcript_analysis", "tool": c["name"], "args": c.get("args", {})})
         
         tool_node = ToolNode(tools)
         tr = tool_node.invoke({"messages": [res]})
@@ -612,71 +686,146 @@ def budget_agent(state: TripState) -> TripState:
         messages.append(res)
         messages.extend(tr["messages"])
         
-        synthesis_prompt = f"Create a detailed budget breakdown for {duration} in {destination} with a {budget} budget."
+        synthesis_prompt = (
+            "Based on the extracted items, provide a structured summary of all potential Jira tickets. "
+            "For each ticket, include: title, type, brief description, and why it's important."
+        )
         messages.append(SystemMessage(content=synthesis_prompt))
         
         # Instrument synthesis LLM call
-        synthesis_vars = {"duration": duration, "destination": destination, "budget": budget}
+        synthesis_vars = {"meeting_type": meeting_type, "context": "tool_results"}
         with using_prompt_template(template=synthesis_prompt, variables=synthesis_vars, version="v1-synthesis"):
             final_res = llm.invoke(messages)
         out = final_res.content
     else:
         out = res.content
 
-    return {"messages": [SystemMessage(content=out)], "budget": out, "tool_calls": calls}
+    return {"messages": [SystemMessage(content=out)], "analysis": out, "tool_calls": calls}
 
 
-def local_agent(state: TripState) -> TripState:
-    req = state["trip_request"]
-    destination = req["destination"]
-    interests = req.get("interests", "local culture")
-    travel_style = req.get("travel_style", "standard")
-    
-    # RAG: Retrieve curated local guides if enabled
-    context_lines = []
-    if ENABLE_RAG:
-        retrieved = GUIDE_RETRIEVER.retrieve(destination, interests, k=3)
-        if retrieved:
-            context_lines.append("=== Curated Local Guides (from database) ===")
-            for idx, item in enumerate(retrieved, 1):
-                content = item["content"]
-                source = item["metadata"].get("source", "Unknown")
-                context_lines.append(f"{idx}. {content}")
-                context_lines.append(f"   Source: {source}")
-            context_lines.append("=== End of Curated Guides ===\n")
-    
-    context_text = "\n".join(context_lines) if context_lines else ""
+def priority_impact_agent(state: TicketState) -> TicketState:
+    """Assess priority, effort, and impact for potential tickets."""
+    req = state["transcript_request"]
+    meeting_type = req.get("meeting_type", "general")
+    transcript = req.get("transcript", "")
     
     prompt_t = (
-        "You are a local guide.\n"
-        "Find authentic experiences in {destination} for someone interested in: {interests}.\n"
-        "Travel style: {travel_style}. Use tools to gather local insights.\n"
+        "You are a prioritization expert.\n"
+        "Analyze this transcript and assess potential tickets for:\n"
+        "1. Priority (P0-P3) based on urgency and business impact\n"
+        "2. Effort estimate (S/M/L/XL) based on complexity\n"
+        "3. Business and user impact\n\n"
+        "Meeting type: {meeting_type}\n"
+        "Transcript excerpt: {transcript_preview}"
     )
-    
-    # Add retrieved context to prompt if available
-    if context_text:
-        prompt_t += "\nRelevant curated experiences from our database:\n{context}\n"
-    
     vars_ = {
-        "destination": destination,
-        "interests": interests,
-        "travel_style": travel_style,
-        "context": context_text if context_text else "No curated context available.",
+        "meeting_type": meeting_type,
+        "transcript_preview": transcript[:400] + "..." if len(transcript) > 400 else transcript
     }
     
     messages = [SystemMessage(content=prompt_t.format(**vars_))]
-    tools = [local_flavor, local_customs, hidden_gems]
+    tools = [calculate_priority_score, estimate_effort, assess_impact]
     agent = llm.bind_tools(tools)
     
     calls: List[Dict[str, Any]] = []
     
     # Agent metadata and prompt template instrumentation
-    with using_attributes(tags=["local", "local_experiences"]):
+    with using_attributes(tags=["priority", "impact_analysis"]):
         if _TRACING:
             current_span = trace.get_current_span()
             if current_span:
-                current_span.set_attribute("metadata.agent_type", "local")
-                current_span.set_attribute("metadata.agent_node", "local_agent")
+                current_span.set_attribute("metadata.agent_type", "priority")
+                current_span.set_attribute("metadata.agent_node", "priority_impact_agent")
+        
+        with using_prompt_template(template=prompt_t, variables=vars_, version="v1"):
+            res = agent.invoke(messages)
+    
+    if getattr(res, "tool_calls", None):
+        for c in res.tool_calls:
+            calls.append({"agent": "priority", "tool": c["name"], "args": c.get("args", {})})
+        
+        tool_node = ToolNode(tools)
+        tr = tool_node.invoke({"messages": [res]})
+        
+        # Add tool results and ask for synthesis
+        messages.append(res)
+        messages.extend(tr["messages"])
+        
+        synthesis_prompt = (
+            "Provide a prioritized summary of tickets with priority scores (P0-P3), "
+            "effort estimates (S/M/L/XL), and impact assessments. Order by priority."
+        )
+        messages.append(SystemMessage(content=synthesis_prompt))
+        
+        # Instrument synthesis LLM call
+        synthesis_vars = {"meeting_type": meeting_type}
+        with using_prompt_template(template=synthesis_prompt, variables=synthesis_vars, version="v1-synthesis"):
+            final_res = llm.invoke(messages)
+        out = final_res.content
+    else:
+        out = res.content
+
+    return {"messages": [SystemMessage(content=out)], "priority": out, "tool_calls": calls}
+
+
+def context_enrichment_agent(state: TicketState) -> TicketState:
+    """Add company-specific context, related tickets, and labels to tickets."""
+    req = state["transcript_request"]
+    project_key = req.get("project_key", "PROJ")
+    transcript = req.get("transcript", "")
+    
+    # RAG: Retrieve company documentation if enabled
+    context_lines = []
+    if ENABLE_RAG:
+        # Use existing retriever as placeholder for company docs
+        # In production, this would query a vector DB of company docs and past tickets
+        query = f"{project_key} documentation architecture past tickets"
+        retrieved = GUIDE_RETRIEVER.retrieve(query, None, k=2)
+        if retrieved:
+            context_lines.append("=== Company Context (from knowledge base) ===")
+            for idx, item in enumerate(retrieved, 1):
+                content = item["content"]
+                source = item["metadata"].get("source", "Unknown")
+                context_lines.append(f"{idx}. {content}")
+                context_lines.append(f"   Source: {source}")
+            context_lines.append("=== End of Company Context ===\n")
+    
+    context_text = "\n".join(context_lines) if context_lines else ""
+    
+    prompt_t = (
+        "You are a context enrichment specialist.\n"
+        "Analyze this transcript and suggest for each potential ticket:\n"
+        "1. Relevant labels, components, and tags\n"
+        "2. Related or potentially duplicate tickets\n"
+        "3. References to relevant documentation or architectural decisions\n\n"
+        "Project: {project_key}\n"
+        "Transcript excerpt: {transcript_preview}"
+    )
+    
+    # Add retrieved context to prompt if available
+    if context_text:
+        prompt_t += "\n\nRelevant company context:\n{context}\n"
+    
+    vars_ = {
+        "project_key": project_key,
+        "transcript_preview": transcript[:300] + "..." if len(transcript) > 300 else transcript,
+        "context": context_text if context_text else "No company context available.",
+    }
+    
+    messages = [SystemMessage(content=prompt_t.format(**vars_))]
+    tools = [vector_search_company_docs, find_related_tickets, add_labels]
+    agent = llm.bind_tools(tools)
+    
+    calls: List[Dict[str, Any]] = []
+    
+    # Agent metadata and prompt template instrumentation
+    with using_attributes(tags=["context_enrichment", "ticket_metadata"]):
+        if _TRACING:
+            current_span = trace.get_current_span()
+            if current_span:
+                current_span.set_attribute("metadata.agent_type", "context_enrichment")
+                current_span.set_attribute("metadata.agent_node", "context_enrichment_agent")
+                current_span.set_attribute("metadata.project_key", project_key)
                 if ENABLE_RAG and context_text:
                     current_span.set_attribute("metadata.rag_enabled", "true")
         
@@ -685,7 +834,7 @@ def local_agent(state: TripState) -> TripState:
     
     if getattr(res, "tool_calls", None):
         for c in res.tool_calls:
-            calls.append({"agent": "local", "tool": c["name"], "args": c.get("args", {})})
+            calls.append({"agent": "context_enrichment", "tool": c["name"], "args": c.get("args", {})})
         
         tool_node = ToolNode(tools)
         tr = tool_node.invoke({"messages": [res]})
@@ -694,92 +843,122 @@ def local_agent(state: TripState) -> TripState:
         messages.append(res)
         messages.extend(tr["messages"])
         
-        synthesis_prompt = f"Create a curated list of authentic experiences for someone interested in {interests} with a {travel_style} approach."
+        synthesis_prompt = (
+            "Provide enriched ticket metadata including recommended labels, components, "
+            "related tickets, and documentation references for each ticket."
+        )
         messages.append(SystemMessage(content=synthesis_prompt))
         
         # Instrument synthesis LLM call
-        synthesis_vars = {"interests": interests, "travel_style": travel_style, "destination": destination}
+        synthesis_vars = {"project_key": project_key}
         with using_prompt_template(template=synthesis_prompt, variables=synthesis_vars, version="v1-synthesis"):
             final_res = llm.invoke(messages)
         out = final_res.content
     else:
         out = res.content
 
-    return {"messages": [SystemMessage(content=out)], "local": out, "tool_calls": calls}
+    return {"messages": [SystemMessage(content=out)], "context": out, "tool_calls": calls}
 
 
-def itinerary_agent(state: TripState) -> TripState:
-    req = state["trip_request"]
-    destination = req["destination"]
-    duration = req["duration"]
-    travel_style = req.get("travel_style", "standard")
-    user_input = (req.get("user_input") or "").strip()
+def ticket_synthesis_agent(state: TicketState) -> TicketState:
+    """Synthesize all agent outputs into structured Jira tickets."""
+    req = state["transcript_request"]
+    project_key = req.get("project_key", "PROJ")
+    auto_submit = req.get("auto_submit", False)
     
     prompt_parts = [
-        "Create a {duration} itinerary for {destination} ({travel_style}).",
+        "Create structured Jira tickets based on the following inputs:",
         "",
-        "Inputs:",
-        "Research: {research}",
-        "Budget: {budget}",
-        "Local: {local}",
+        "Analysis: {analysis}",
+        "Priority & Impact: {priority}",
+        "Context & Metadata: {context}",
+        "",
+        "Generate a JSON array of tickets with this structure:",
+        '[{{"title": "...", "type": "Story|Bug|Task", "priority": "P0-P3", '
+        '"effort": "S|M|L|XL", "description": "...", "labels": [...], "component": "..."}}]',
+        "",
+        "Project: {project_key}",
     ]
-    if user_input:
-        prompt_parts.append("User input: {user_input}")
     
     prompt_t = "\n".join(prompt_parts)
     vars_ = {
-        "duration": duration,
-        "destination": destination,
-        "travel_style": travel_style,
-        "research": (state.get("research") or "")[:400],
-        "budget": (state.get("budget") or "")[:400],
-        "local": (state.get("local") or "")[:400],
-        "user_input": user_input,
+        "analysis": (state.get("analysis") or "")[:400],
+        "priority": (state.get("priority") or "")[:400],
+        "context": (state.get("context") or "")[:400],
+        "project_key": project_key,
     }
     
     # Add span attributes for better observability in Arize
-    # NOTE: using_attributes must be OUTER context for proper propagation
-    with using_attributes(tags=["itinerary", "final_agent"]):
+    with using_attributes(tags=["ticket_synthesis", "final_agent"]):
         if _TRACING:
             current_span = trace.get_current_span()
             if current_span:
-                current_span.set_attribute("metadata.itinerary", "true")
-                current_span.set_attribute("metadata.agent_type", "itinerary")
-                current_span.set_attribute("metadata.agent_node", "itinerary_agent")
-                if user_input:
-                    current_span.set_attribute("metadata.user_input", user_input)
+                current_span.set_attribute("metadata.agent_type", "ticket_synthesis")
+                current_span.set_attribute("metadata.agent_node", "ticket_synthesis_agent")
+                current_span.set_attribute("metadata.project_key", project_key)
+                current_span.set_attribute("metadata.auto_submit", str(auto_submit))
         
         # Prompt template wrapper for Arize Playground integration
         with using_prompt_template(template=prompt_t, variables=vars_, version="v1"):
             res = llm.invoke([SystemMessage(content=prompt_t.format(**vars_))])
     
-    return {"messages": [SystemMessage(content=res.content)], "final": res.content}
+    # Parse the LLM response to extract tickets
+    # In production, would have more robust JSON parsing
+    content = res.content
+    tickets = []
+    
+    # Simple extraction - in production use proper JSON parsing
+    # For now, create a structured response
+    try:
+        import re
+        # Try to extract JSON array if present
+        json_match = re.search(r'\[.*\]', content, re.DOTALL)
+        if json_match:
+            tickets_data = json.loads(json_match.group())
+            tickets = tickets_data
+    except:
+        # Fallback: create a single ticket from the response
+        tickets = [{
+            "title": "Tickets from meeting",
+            "type": "Task",
+            "priority": "P2",
+            "effort": "M",
+            "description": content[:500],
+            "labels": [project_key.lower()],
+            "component": None
+        }]
+    
+    return {
+        "messages": [SystemMessage(content=content)],
+        "tickets": tickets
+    }
 
 
 def build_graph():
-    g = StateGraph(TripState)
-    g.add_node("research_node", research_agent)
-    g.add_node("budget_node", budget_agent)
-    g.add_node("local_node", local_agent)
-    g.add_node("itinerary_node", itinerary_agent)
+    """Build the transcript-to-Jira agent workflow graph."""
+    g = StateGraph(TicketState)
+    g.add_node("analysis_node", transcript_analysis_agent)
+    g.add_node("priority_node", priority_impact_agent)
+    g.add_node("context_node", context_enrichment_agent)
+    g.add_node("synthesis_node", ticket_synthesis_agent)
 
-    # Run research, budget, and local agents in parallel
-    g.add_edge(START, "research_node")
-    g.add_edge(START, "budget_node")
-    g.add_edge(START, "local_node")
+    # Run analysis, priority, and context agents in parallel
+    g.add_edge(START, "analysis_node")
+    g.add_edge(START, "priority_node")
+    g.add_edge(START, "context_node")
     
-    # All three agents feed into the itinerary agent
-    g.add_edge("research_node", "itinerary_node")
-    g.add_edge("budget_node", "itinerary_node")
-    g.add_edge("local_node", "itinerary_node")
+    # All three agents feed into the synthesis agent
+    g.add_edge("analysis_node", "synthesis_node")
+    g.add_edge("priority_node", "synthesis_node")
+    g.add_edge("context_node", "synthesis_node")
     
-    g.add_edge("itinerary_node", END)
+    g.add_edge("synthesis_node", END)
 
     # Compile without checkpointer to avoid state persistence issues
     return g.compile()
 
 
-app = FastAPI(title="AI Trip Planner")
+app = FastAPI(title="Transcript-to-Jira Agent")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -800,7 +979,7 @@ def serve_frontend():
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "service": "ai-trip-planner"}
+    return {"status": "healthy", "service": "transcript-to-jira-agent"}
 
 
 # Initialize tracing once at startup, not per request
@@ -815,20 +994,24 @@ if _TRACING:
     except Exception:
         pass
 
-@app.post("/plan-trip", response_model=TripResponse)
-def plan_trip(req: TripRequest):
+@app.post("/analyze-transcript", response_model=TranscriptResponse)
+def analyze_transcript(req: TranscriptRequest):
+    """Analyze meeting transcript and generate Jira tickets."""
     graph = build_graph()
     
+    # Generate session ID if not provided
+    import uuid
+    session_id = req.session_id or str(uuid.uuid4())
+    
     # Only include necessary fields in initial state
-    # Agent outputs (research, budget, local, final) will be added during execution
+    # Agent outputs (analysis, priority, context, tickets) will be added during execution
     state = {
         "messages": [],
-        "trip_request": req.model_dump(),
+        "transcript_request": req.model_dump(),
         "tool_calls": [],
     }
     
     # Add session and user tracking attributes to the trace
-    session_id = req.session_id
     user_id = req.user_id
     turn_idx = req.turn_index
     
@@ -845,12 +1028,37 @@ def plan_trip(req: TripRequest):
             current_span = trace.get_current_span()
             if current_span:
                 current_span.set_attribute("turn_index", turn_idx)
+                current_span.set_attribute("meeting_type", req.meeting_type)
             out = graph.invoke(state)
     else:
         with using_attributes(**attrs_kwargs):
             out = graph.invoke(state)
     
-    return TripResponse(result=out.get("final", ""), tool_calls=out.get("tool_calls", []))
+    # Extract tickets from the output
+    tickets_data = out.get("tickets", [])
+    tickets = []
+    for t in tickets_data:
+        tickets.append(JiraTicket(
+            title=t.get("title", "Untitled"),
+            type=t.get("type", "Task"),
+            priority=t.get("priority", "P2"),
+            effort=t.get("effort", "M"),
+            description=t.get("description", ""),
+            labels=t.get("labels", []),
+            component=t.get("component"),
+            jira_url=t.get("jira_url")
+        ))
+    
+    return TranscriptResponse(
+        session_id=session_id,
+        tickets=tickets,
+        metadata={
+            "meeting_type": req.meeting_type,
+            "project_key": req.project_key,
+            "action_items_found": len(tickets),
+        },
+        tool_calls=out.get("tool_calls", [])
+    )
 
 
 if __name__ == "__main__":
