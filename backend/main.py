@@ -993,10 +993,7 @@ if _TRACING:
             tp = register(
                 space_id=space_id, 
                 api_key=api_key, 
-                project_name="transcript-to-jira-agent",
-                # Add model metadata for better tracking in Arize
-                model_id="transcript-analyzer-v1",
-                model_version="1.0.0"
+                project_name="transcript-to-jira-agent"
             )
             
             # Instrument LangChain for full agent tracing
@@ -1038,33 +1035,38 @@ def analyze_transcript(req: TranscriptRequest):
         "tool_calls": [],
     }
     
-    # Build comprehensive attributes for Arize tracing
-    attrs_kwargs = {
-        "session_id": session_id,
-        "meeting_type": req.meeting_type,
-        "project_key": req.project_key,
-        "auto_submit": str(req.auto_submit),
-        "transcript_length": len(req.transcript),
-        "endpoint": "analyze-transcript",
-        "workflow": "transcript-to-jira",
-    }
-    
-    # Add optional user tracking
+    # Build attributes for Arize tracing
+    # using_attributes() only accepts session_id and user_id
+    attrs_kwargs = {"session_id": session_id}
     if req.user_id:
         attrs_kwargs["user_id"] = req.user_id
-    if req.turn_index is not None:
-        attrs_kwargs["turn_index"] = req.turn_index
     
     # Execute graph with full tracing context
     with using_attributes(**attrs_kwargs):
         if _TRACING:
             current_span = trace.get_current_span()
             if current_span:
-                # Add span attributes for Arize visualization
+                # Add all custom span attributes for Arize visualization
                 current_span.set_attribute("llm.model", "gpt-3.5-turbo")
                 current_span.set_attribute("agent.type", "multi-agent-system")
                 current_span.set_attribute("agent.workflow", "parallel-execution")
+                
+                # Input metadata
                 current_span.set_attribute("input.type", "transcript")
+                current_span.set_attribute("input.meeting_type", req.meeting_type)
+                current_span.set_attribute("input.project_key", req.project_key)
+                current_span.set_attribute("input.transcript_length", len(req.transcript))
+                current_span.set_attribute("input.auto_submit", str(req.auto_submit))
+                
+                # Workflow metadata
+                current_span.set_attribute("endpoint", "analyze-transcript")
+                current_span.set_attribute("workflow", "transcript-to-jira")
+                
+                # Optional tracking
+                if req.turn_index is not None:
+                    current_span.set_attribute("turn_index", req.turn_index)
+                
+                # Output type
                 current_span.set_attribute("output.type", "jira-tickets")
         
         out = graph.invoke(state)
