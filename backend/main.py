@@ -982,17 +982,44 @@ def health():
     return {"status": "healthy", "service": "transcript-to-jira-agent"}
 
 
-# Initialize tracing once at startup, not per request
+# Initialize Arize AX tracing once at startup, not per request
+# This sends traces to Arize platform for agent visualization and monitoring
 if _TRACING:
     try:
         space_id = os.getenv("ARIZE_SPACE_ID")
         api_key = os.getenv("ARIZE_API_KEY")
         if space_id and api_key:
-            tp = register(space_id=space_id, api_key=api_key, project_name="ai-trip-planner")
-            LangChainInstrumentor().instrument(tracer_provider=tp, include_chains=True, include_agents=True, include_tools=True)
-            LiteLLMInstrumentor().instrument(tracer_provider=tp, skip_dep_check=True)
-    except Exception:
-        pass
+            # Register with Arize AX platform
+            tp = register(
+                space_id=space_id, 
+                api_key=api_key, 
+                project_name="transcript-to-jira-agent",
+                # Add model metadata for better tracking in Arize
+                model_id="transcript-analyzer-v1",
+                model_version="1.0.0"
+            )
+            
+            # Instrument LangChain for full agent tracing
+            # This captures: agent nodes, tool calls, LLM calls, state transitions
+            LangChainInstrumentor().instrument(
+                tracer_provider=tp,
+                include_chains=True,
+                include_agents=True, 
+                include_tools=True
+            )
+            
+            # Instrument LiteLLM for LLM call tracing
+            LiteLLMInstrumentor().instrument(
+                tracer_provider=tp,
+                skip_dep_check=True
+            )
+            
+            print("✅ Arize AX tracing initialized")
+            print(f"📊 Project: transcript-to-jira-agent")
+            print(f"🔍 Traces will appear at: https://app.arize.com/")
+    except Exception as e:
+        print(f"⚠️ Arize tracing failed to initialize: {e}")
+        print("Continuing without tracing...")
 
 @app.post("/analyze-transcript", response_model=TranscriptResponse)
 def analyze_transcript(req: TranscriptRequest):
@@ -1011,28 +1038,36 @@ def analyze_transcript(req: TranscriptRequest):
         "tool_calls": [],
     }
     
-    # Add session and user tracking attributes to the trace
-    user_id = req.user_id
-    turn_idx = req.turn_index
+    # Build comprehensive attributes for Arize tracing
+    attrs_kwargs = {
+        "session_id": session_id,
+        "meeting_type": req.meeting_type,
+        "project_key": req.project_key,
+        "auto_submit": str(req.auto_submit),
+        "transcript_length": len(req.transcript),
+        "endpoint": "analyze-transcript",
+        "workflow": "transcript-to-jira",
+    }
     
-    # Build attributes for session and user tracking
-    attrs_kwargs = {}
-    if session_id:
-        attrs_kwargs["session_id"] = session_id
-    if user_id:
-        attrs_kwargs["user_id"] = user_id
+    # Add optional user tracking
+    if req.user_id:
+        attrs_kwargs["user_id"] = req.user_id
+    if req.turn_index is not None:
+        attrs_kwargs["turn_index"] = req.turn_index
     
-    # Add turn_index as a custom span attribute if provided
-    if turn_idx is not None and _TRACING:
-        with using_attributes(**attrs_kwargs):
+    # Execute graph with full tracing context
+    with using_attributes(**attrs_kwargs):
+        if _TRACING:
             current_span = trace.get_current_span()
             if current_span:
-                current_span.set_attribute("turn_index", turn_idx)
-                current_span.set_attribute("meeting_type", req.meeting_type)
-            out = graph.invoke(state)
-    else:
-        with using_attributes(**attrs_kwargs):
-            out = graph.invoke(state)
+                # Add span attributes for Arize visualization
+                current_span.set_attribute("llm.model", "gpt-3.5-turbo")
+                current_span.set_attribute("agent.type", "multi-agent-system")
+                current_span.set_attribute("agent.workflow", "parallel-execution")
+                current_span.set_attribute("input.type", "transcript")
+                current_span.set_attribute("output.type", "jira-tickets")
+        
+        out = graph.invoke(state)
     
     # Extract tickets from the output
     tickets_data = out.get("tickets", [])
@@ -1048,6 +1083,23 @@ def analyze_transcript(req: TranscriptRequest):
             component=t.get("component"),
             jira_url=t.get("jira_url")
         ))
+    
+    # Add output metrics to Arize trace for monitoring
+    if _TRACING:
+        current_span = trace.get_current_span()
+        if current_span:
+            current_span.set_attribute("output.ticket_count", len(tickets))
+            current_span.set_attribute("output.tool_calls", len(out.get("tool_calls", [])))
+            # Add ticket type distribution
+            ticket_types = {}
+            for ticket in tickets:
+                ticket_types[ticket.type] = ticket_types.get(ticket.type, 0) + 1
+            current_span.set_attribute("output.ticket_types", json.dumps(ticket_types))
+            # Add priority distribution
+            priorities = {}
+            for ticket in tickets:
+                priorities[ticket.priority] = priorities.get(ticket.priority, 0) + 1
+            current_span.set_attribute("output.priority_distribution", json.dumps(priorities))
     
     return TranscriptResponse(
         session_id=session_id,
