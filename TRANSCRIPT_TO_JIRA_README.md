@@ -337,3 +337,4 @@ This is a learning project! To extend it:
 **Adapted from**: AI Trip Planner multi-agent architecture  
 **Time to Build**: ~2 hours with existing codebase
 
+

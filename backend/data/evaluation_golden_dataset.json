@@ -1,0 +1,224 @@
+[
+  {
+    "id": "eval_001",
+    "name": "Critical Bug - Urgent",
+    "transcript": "Emergency! The login page is completely broken on mobile Safari. Users can't access their accounts at all. This is blocking revenue and we're getting flooded with support tickets. We need to fix this TODAY before end of business.",
+    "expected_tickets": [
+      {
+        "title": "Fix login page broken on mobile Safari",
+        "type": "Bug",
+        "priority": "P0",
+        "effort": "M",
+        "description": "Critical bug affecting all mobile Safari users. Login page is non-functional, preventing account access. Revenue-blocking issue requiring immediate attention.",
+        "labels": ["bug", "mobile", "login", "safari", "critical", "revenue-impact"],
+        "component": "Frontend"
+      }
+    ],
+    "evaluation_notes": "Should be P0 due to revenue impact, 'TODAY' deadline, and 'blocking' language. Bug type is correct. Mobile Safari mentioned explicitly."
+  },
+  {
+    "id": "eval_002",
+    "name": "Feature Request - Low Priority",
+    "transcript": "Users have been asking for a dark mode toggle in the settings page. It would be nice to have but it's not urgent. Let's add it to the backlog. Sarah will need to design it first before we implement.",
+    "expected_tickets": [
+      {
+        "title": "Add dark mode toggle to settings page",
+        "type": "Story",
+        "priority": "P2",
+        "effort": "L",
+        "description": "User-requested feature to add dark mode toggle in settings. Requires design work by Sarah before implementation. Not urgent, adding to backlog.",
+        "labels": ["feature", "ui", "settings", "dark-mode", "user-request"],
+        "component": "Frontend"
+      }
+    ],
+    "evaluation_notes": "Should be P2/P3 (nice-to-have, not urgent). Story type (feature). L effort due to design + implementation. Frontend component clear."
+  },
+  {
+    "id": "eval_003",
+    "name": "Multiple Action Items",
+    "transcript": "Sprint planning outcomes: 1) Fix the memory leak in the background sync service - John will handle this. 2) Optimize the database queries on the user dashboard, they're running slow. 3) Add unit tests for the payment processor - we have zero test coverage there.",
+    "expected_tickets": [
+      {
+        "title": "Fix memory leak in background sync service",
+        "type": "Bug",
+        "priority": "P1",
+        "effort": "M",
+        "description": "Memory leak identified in background sync service. Assigned to John.",
+        "labels": ["bug", "performance", "background-sync", "memory-leak"],
+        "component": "Backend"
+      },
+      {
+        "title": "Optimize database queries on user dashboard",
+        "type": "Task",
+        "priority": "P2",
+        "effort": "M",
+        "description": "Database queries on user dashboard are running slow. Performance optimization needed.",
+        "labels": ["performance", "database", "optimization", "dashboard"],
+        "component": "Backend"
+      },
+      {
+        "title": "Add unit tests for payment processor",
+        "type": "Task",
+        "priority": "P2",
+        "effort": "L",
+        "description": "Payment processor currently has zero test coverage. Need to add comprehensive unit tests.",
+        "labels": ["testing", "payments", "technical-debt", "unit-tests"],
+        "component": "Backend"
+      }
+    ],
+    "evaluation_notes": "Should extract 3 separate tickets. Memory leak is a bug (P1). Other two are tasks (P2). Testing is often L effort. All backend."
+  },
+  {
+    "id": "eval_004",
+    "name": "Bug Triage - Medium Priority",
+    "transcript": "Bug report from QA: When users upload a profile image larger than 5MB, the upload silently fails with no error message. This affects maybe 10% of users who try to upload high-res photos. Not critical but we should fix it in the next sprint.",
+    "expected_tickets": [
+      {
+        "title": "Fix silent failure when uploading large profile images",
+        "type": "Bug",
+        "priority": "P2",
+        "effort": "S",
+        "description": "Profile image uploads larger than 5MB fail silently without error message. Affects approximately 10% of users uploading high-resolution photos. Fix scheduled for next sprint.",
+        "labels": ["bug", "upload", "profile", "error-handling", "ux"],
+        "component": "Backend"
+      }
+    ],
+    "evaluation_notes": "P2 is appropriate ('next sprint', 'not critical'). Bug type correct. S effort (add error handling). Could be Backend or Frontend - both acceptable."
+  },
+  {
+    "id": "eval_005",
+    "name": "Refactoring Task",
+    "transcript": "Code review comment: The authentication module has gotten really messy with lots of duplicate code. We should refactor it to follow our new auth pattern. It's not urgent but will make maintenance easier. Probably a 2-3 day effort.",
+    "expected_tickets": [
+      {
+        "title": "Refactor authentication module to follow new pattern",
+        "type": "Task",
+        "priority": "P3",
+        "effort": "L",
+        "description": "Authentication module contains duplicate code and doesn't follow new auth pattern. Refactoring will improve maintainability. Estimated 2-3 days of work. Not urgent.",
+        "labels": ["refactoring", "authentication", "technical-debt", "code-quality"],
+        "component": "Backend"
+      }
+    ],
+    "evaluation_notes": "P3 appropriate ('not urgent', maintenance improvement). Task type (refactoring). L effort (2-3 days). Technical debt."
+  },
+  {
+    "id": "eval_006",
+    "name": "Infrastructure Epic",
+    "transcript": "We need to migrate from AWS to GCP over the next quarter. This is a major initiative involving: database migration, CI/CD pipeline reconfiguration, networking setup, monitoring integration, and team training. Lisa will lead this effort. Target completion: Q2.",
+    "expected_tickets": [
+      {
+        "title": "Migrate infrastructure from AWS to GCP",
+        "type": "Epic",
+        "priority": "P1",
+        "effort": "XL",
+        "description": "Major migration initiative to move entire infrastructure from AWS to GCP. Includes database migration, CI/CD reconfiguration, networking, monitoring integration, and team training. Led by Lisa. Target: Q2 completion.",
+        "labels": ["epic", "migration", "infrastructure", "aws", "gcp", "q2"],
+        "component": "Infrastructure"
+      }
+    ],
+    "evaluation_notes": "Epic type (major initiative, multiple sub-tasks). P1 (quarter-long project with target date). XL effort (multi-month). Infrastructure component."
+  },
+  {
+    "id": "eval_007",
+    "name": "Ambiguous Priority",
+    "transcript": "The search functionality is kind of slow sometimes. We should probably look into it at some point. Maybe optimize the search queries or add caching. Not sure how complex it would be.",
+    "expected_tickets": [
+      {
+        "title": "Investigate and optimize search performance",
+        "type": "Task",
+        "priority": "P2",
+        "effort": "M",
+        "description": "Search functionality experiencing slow performance. Investigation needed to determine if query optimization or caching is required. Complexity unclear, requires analysis.",
+        "labels": ["performance", "search", "investigation", "optimization"],
+        "component": "Backend"
+      }
+    ],
+    "evaluation_notes": "P2/P3 acceptable (vague urgency). Task type (investigation). M effort (uncertain, could vary). 'Investigation' label important."
+  },
+  {
+    "id": "eval_008",
+    "name": "User Research Findings",
+    "transcript": "User research session findings: Users want to be able to export their data as PDF. 15 out of 20 users mentioned this. High demand feature. Also, 8 users asked for bulk actions in the data table. Both are high value additions.",
+    "expected_tickets": [
+      {
+        "title": "Add PDF export functionality for user data",
+        "type": "Story",
+        "priority": "P1",
+        "effort": "L",
+        "description": "User research revealed high demand for PDF export (15/20 users). High-value feature addition based on research findings.",
+        "labels": ["feature", "export", "pdf", "user-research", "high-demand"],
+        "component": "Frontend"
+      },
+      {
+        "title": "Add bulk actions to data table",
+        "type": "Story",
+        "priority": "P1",
+        "effort": "M",
+        "description": "User research feedback: 8 users requested bulk action functionality in data table. High-value feature based on research.",
+        "labels": ["feature", "bulk-actions", "data-table", "user-research"],
+        "component": "Frontend"
+      }
+    ],
+    "evaluation_notes": "Should extract 2 tickets. Both P1 (high demand, high value). Story type (features). PDF export likely L effort, bulk actions M effort."
+  },
+  {
+    "id": "eval_009",
+    "name": "Security Issue",
+    "transcript": "Security audit found that we're not sanitizing user input in the comments section. This is a potential XSS vulnerability. We need to fix this immediately before someone exploits it. Mark as critical.",
+    "expected_tickets": [
+      {
+        "title": "Fix XSS vulnerability in comments section",
+        "type": "Bug",
+        "priority": "P0",
+        "effort": "S",
+        "description": "Security audit identified lack of input sanitization in comments, creating XSS vulnerability. Critical security issue requiring immediate fix to prevent exploitation.",
+        "labels": ["security", "bug", "xss", "vulnerability", "critical", "comments"],
+        "component": "Backend"
+      }
+    ],
+    "evaluation_notes": "P0 (security vulnerability, 'immediately', 'critical'). Bug type. S effort (add sanitization). Security label critical."
+  },
+  {
+    "id": "eval_010",
+    "name": "No Action Items",
+    "transcript": "Team discussion about the new product roadmap. We talked about various features users might want in the future. No concrete decisions made yet, just brainstorming. Will revisit next week with more data.",
+    "expected_tickets": [],
+    "evaluation_notes": "Should generate 0 tickets - no actionable items, just discussion. Important edge case to handle gracefully."
+  },
+  {
+    "id": "eval_011",
+    "name": "Deadline-Driven Priority",
+    "transcript": "Client demo is scheduled for Friday and the dashboard widget is still showing placeholder data. We absolutely must have real data flowing in by Thursday EOD for the demo. This is non-negotiable.",
+    "expected_tickets": [
+      {
+        "title": "Connect dashboard widget to real data for client demo",
+        "type": "Task",
+        "priority": "P0",
+        "effort": "M",
+        "description": "Dashboard widget currently shows placeholder data. Must display real data by Thursday EOD for Friday client demo. Non-negotiable deadline.",
+        "labels": ["dashboard", "data-integration", "demo", "deadline", "urgent"],
+        "component": "Frontend"
+      }
+    ],
+    "evaluation_notes": "P0 due to imminent deadline (Friday) and 'non-negotiable' language. Task type. M effort. Deadline label important."
+  },
+  {
+    "id": "eval_012",
+    "name": "Performance Degradation",
+    "transcript": "Production alert: API response times have increased from 200ms to 2 seconds since yesterday's deployment. Users are experiencing slow page loads. We need to investigate and roll back if necessary. High priority.",
+    "expected_tickets": [
+      {
+        "title": "Investigate and fix API performance degradation",
+        "type": "Bug",
+        "priority": "P0",
+        "effort": "M",
+        "description": "API response times degraded from 200ms to 2s after yesterday's deployment. Users experiencing slow page loads. Requires immediate investigation and potential rollback.",
+        "labels": ["bug", "performance", "api", "production", "urgent", "degradation"],
+        "component": "Backend"
+      }
+    ],
+    "evaluation_notes": "P0 (production issue, 10x performance degradation, users affected). Bug type. M effort (investigate + fix). Production label important."
+  }
+]
+
